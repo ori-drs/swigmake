@@ -39,8 +39,9 @@ function(add_swig_matlab_module target i_file)
 		message(FATAL_ERROR "Error using add_swig_matlab_module: Please provide the path to your .i file as the second argument")
 	endif()
 
-	if (NOT MATLAB_ROOT)
-		message(FATAL_ERROR "Please run 'mex_setup(REQUIRED)' which is provided by mex.cmake in https://github.com/RobotLocomotion/cmake before using this macro.")
+    # MATLAB_ROOT is defined by mex_setup(); Matlab_FOUND is defined by find_package(Matlab)
+	if (NOT MATLAB_ROOT AND NOT Matlab_FOUND)
+		message(FATAL_ERROR "Please run 'mex_setup(REQUIRED)' (which is provided by mex.cmake in https://github.com/RobotLocomotion/cmake) or 'find_package(Matlab REQUIRED)' before using this macro.")
 	endif()
 
 	# Load the swig macros
