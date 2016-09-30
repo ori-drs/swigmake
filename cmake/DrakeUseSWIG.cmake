@@ -318,7 +318,16 @@ macro(SWIG_ADD_MODULE name language)
   set_directory_properties(PROPERTIES
     ADDITIONAL_MAKE_CLEAN_FILES "${swig_extra_clean_files};${swig_generated_sources}")
   if ("${swig_lowercase_language}" STREQUAL "matlab")
-    add_mex(${SWIG_MODULE_${name}_REAL_NAME} ${swig_generated_sources} ${swig_other_sources})
+    if(Matlab_MEX_EXTENSION AND Matlab_ROOT_DIR)  # find_package(Matlab)
+      matlab_add_mex(NAME ${SWIG_MODULE_${name}_REAL_NAME}
+        SRC ${swig_generated_sources} ${swig_other_sources})
+      set_target_properties(${SWIG_MODULE_${name}_REAL_NAME} PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()  # mex_setup()
+      add_mex(${SWIG_MODULE_${name}_REAL_NAME} ${swig_generated_sources} ${swig_other_sources})
+    endif()
   else()
     add_library(${SWIG_MODULE_${name}_REAL_NAME}
       MODULE
