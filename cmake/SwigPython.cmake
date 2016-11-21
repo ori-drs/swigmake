@@ -44,22 +44,8 @@ function(add_swig_python_module target i_file)
 	find_package(PythonInterp REQUIRED)
 	set(PYVERSION "${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}")
 
-	if(APPLE)
-		# Overload the PYTHON_INCLUDE_DIRS and PYTHON_LIBRARIES because, on OSX with a homebrew-provided python, cmake latches on to an old Apple-provided python install. 
-		execute_process(COMMAND ${PYTHON_EXECUTABLE}${PYTHON_VERSION_MAJOR}-config --prefix
-			OUTPUT_VARIABLE PYTHON_PREFIX
-			OUTPUT_STRIP_TRAILING_WHITESPACE
-			)
-		if (PYTHON_VERSION_MAJOR GREATER 2)
-			set(PYTHON_INCLUDE_DIRS ${PYTHON_PREFIX}/include/python${PYVERSION}m)
-		else()
-			set(PYTHON_INCLUDE_DIRS ${PYTHON_PREFIX}/include/python${PYVERSION})
-		endif()
-
-		set(PYTHON_LIBRARIES ${PYTHON_PREFIX}/lib/libpython${PYVERSION}.dylib)
-		# These variable settings will affect the behavior of find_package(PythonLibs)
-	elseif(WIN32)
-		# Finding python libraries on Windows is totally broken, too. See: 
+	if(WIN32)
+		# Finding python libraries on Windows is totally broken, too. See:
 		# https://cmake.org/Bug/view.php?id=12869
 		# https://cmake.org/pipermail/cmake/2009-May/029285.html
 		# https://cmake.org/pipermail/cmake/2011-November/047820.html
@@ -68,21 +54,47 @@ function(add_swig_python_module target i_file)
 		# So instead, we're going to grab the library location by asking the
 		# python interpreter. This is taken directly from
 		# https://cmake.org/pipermail/cmake/2011-November/047793.html
-		# 
-		# Note that it requires numpy to be installed, but that's already necessary for Drake. 
+		#
+		# Note that it requires numpy to be installed, but that's already necessary for Drake.
 
 		execute_process(COMMAND "${PYTHON_EXECUTABLE}" -c "import sys;from distutils.sysconfig import get_python_inc;sys.stdout.write(get_python_inc())"
-		OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS
-		ERROR_VARIABLE ERROR_FINDING_INCLUDES)
+			RESULT_VARIABLE PYTHON_INCLUDE_DIRS_RESULT
+			OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS
+			ERROR_VARIABLE ERROR_FINDING_INCLUDES)
+
+			if(NOT PYTHON_LIBRARIES_DIR_RESULT EQUAL 0)
+				message(WARNING "Could NOT determine PYTHON_INCLUDE_DIRS")
+			endif()
 
 		execute_process(COMMAND "${PYTHON_EXECUTABLE}" -c "import sys;from numpy.distutils.numpy_distribution import NumpyDistribution;from numpy.distutils.command.build_ext import build_ext;a=build_ext(NumpyDistribution());a.ensure_finalized();sys.stdout.write(';'.join(a.library_dirs))"
-		OUTPUT_VARIABLE PYTHON_LIBRARIES_DIR
-		ERROR_VARIABLE ERROR_FINDING_LIBRARIES)
-		set(PYTHON_LIBRARIES ${PYTHON_LIBRARIES_DIR}/python${PYVERSION}.lib)
+			RESULT_VARIABLE PYTHON_LIBRARIES_DIR_RESULT
+			OUTPUT_VARIABLE PYTHON_LIBRARIES_DIR
+			ERROR_VARIABLE ERROR_FINDING_LIBRARIES)
 
+			if(NOT PYTHON_LIBRARIES_DIR_RESULT EQUAL 0)
+				message(WARNING "Could NOT determine PYTHON_LIBRARIES_DIR")
+			endif()
+
+		set(PYTHON_LIBRARIES "${PYTHON_LIBRARIES_DIR}/python${PYVERSION}.lib")
 	else()
-		# Linux is sane. 
-		find_package( PythonLibs REQUIRED )
+	    # Do not override an explicit choice of Python libraries.
+		if(NOT PYTHON_LIBRARY AND NOT PYTHON_INCLUDE_DIR)
+			execute_process(
+				COMMAND "${PYTHON_EXECUTABLE}" -c "import sys; print(sys.exec_prefix)"
+				RESULT_VARIABLE PYTHON_EXEC_PREFIX_RESULT
+				OUTPUT_VARIABLE PYTHON_EXEC_PREFIX
+				OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+			if(PYTHON_EXEC_PREFIX_RESULT EQUAL 0)
+				list(APPEND CMAKE_PREFIX_PATH ${PYTHON_EXEC_PREFIX})
+			else()
+				message(WARNING "Could NOT determine Python sys.exec_prefix")
+			endif()
+		endif()
+
+        # PYTHON_LIBRARY and PYTHON_INCLUDE_DIR (singular) are (cached) inputs.
+        # PYTHON_LIBRARIES and PYTHON_INCLUDE_DIRS (plural) are outputs.
+		find_package(PythonLibs MODULE REQUIRED)
 	endif()
 	include_directories( ${PYTHON_INCLUDE_DIRS} )
 
@@ -92,7 +104,7 @@ function(add_swig_python_module target i_file)
 	endif()
 	include(DrakeUseSWIG)
 
-	# Find the numpy header paths and include them. This calls the FindNumPy.cmake file included in this repo. 
+	# Find the numpy header paths and include them. This calls the FindNumPy.cmake file included in this repo.
 	find_package(NumPy REQUIRED)
 	include_directories(${NUMPY_INCLUDE_DIRS})
 
@@ -101,7 +113,7 @@ function(add_swig_python_module target i_file)
 		include_directories(${dir})
 	endforeach(dir)
 
-	# Tell SWIG that we're compiling a c++ (not c) file, and tell it to use python3 if appropriate. 
+	# Tell SWIG that we're compiling a c++ (not c) file, and tell it to use python3 if appropriate.
 	if (swigpy_CPLUSPLUS)
 		set(CPLUSPLUS ON)
 	else()
@@ -118,12 +130,12 @@ function(add_swig_python_module target i_file)
 	endforeach(dir)
 
 	# Use "modern" python classes to resolve
-	# https://github.com/casadi/casadi/issues/1364 
+	# https://github.com/casadi/casadi/issues/1364
 	# This loses compatibility with python versions <= 2.2, but we're almost
 	# certainly not compatible with them anyway.
 	set(CMAKE_SWIG_FLAGS ${CMAKE_SWIG_FLAGS} "-modern")
 
-	# Tell swig to build python bindings for our target library and link them against the C++ library. 
+	# Tell swig to build python bindings for our target library and link them against the C++ library.
 	swig_add_module(${target} python ${i_file})
 	swig_link_libraries(${target} ${swigpy_LINK_LIBRARIES} ${PYTHON_LIBRARIES})
 
